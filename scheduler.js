@@ -40,6 +40,9 @@ schedule.scheduleJob('30 * * * * *', async () => {
       console.log("IS PAUSED 3", isPaused);
     }
     if (!genesisStartOnce) {
+      const pendingOracleAddress = await predContract.pendingOracle()
+      if (pendingOracleAddress !== "0x")
+        await predContract.updatePriceOracle();
       await predContract.genesisStartRound();
       console.log("GENESIS ROUND START");
       return;
