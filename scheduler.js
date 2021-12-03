@@ -1,14 +1,14 @@
 require('dotenv').config();
 const { ethers } = require('ethers');
 const schedule = require('node-schedule');
-const { bscMainnet, bscTestnet, bnbPredictionMainnet, bnbPredictionTestnet } = require('./constants');
+const { bscMainnet, bnbPredictionMainnet } = require('./constants');
 const abi = require('./abi.json');
 
 schedule.scheduleJob('30 * * * * *', async () => {
   try {
-    const bscProvider = new ethers.providers.JsonRpcProvider(bscTestnet);
+    const bscProvider = new ethers.providers.JsonRpcProvider(bscMainnet);
     const operatorSigner = new ethers.Wallet(process.env.OPERATOR_PRIVATE_KEY, bscProvider);
-    const predContract = new ethers.Contract(bnbPredictionTestnet, abi, operatorSigner);
+    const predContract = new ethers.Contract(bnbPredictionMainnet, abi, operatorSigner);
     const currentEpoch = await predContract.currentEpoch();
     const currentBlock = await bscProvider.getBlockNumber();
     // The block at which the round can be locked
@@ -25,7 +25,7 @@ schedule.scheduleJob('30 * * * * *', async () => {
     if (missedLockBlocks(currentBlock, currentRound, bufferBlocks) && !currentEpoch.eq(ethers.BigNumber.from("0"))) {
       console.log("RESET");
       const adminSigner = new ethers.Wallet(process.env.ADMIN_PRIVATE_KEY, bscProvider);
-      const predContractAdmin = new ethers.Contract(bnbPredictionTestnet, abi, adminSigner);
+      const predContractAdmin = new ethers.Contract(bnbPredictionMainnet, abi, adminSigner);
       let isPaused = await predContractAdmin.paused();
       console.log("IS PAUSED", isPaused);
       if (!isPaused) {
@@ -41,8 +41,11 @@ schedule.scheduleJob('30 * * * * *', async () => {
     }
     if (!genesisStartOnce) {
       const pendingOracleAddress = await predContract.pendingOracle()
-      if (pendingOracleAddress !== "0x")
+      if (pendingOracleAddress !== "0x0000000000000000000000000000000000000000")
+      {
+        console.log("ORACLE INITIATE!")
         await predContract.updatePriceOracle();
+      }
       await predContract.genesisStartRound();
       console.log("GENESIS ROUND START");
       return;
@@ -74,11 +77,11 @@ const viableGenesisRoundExecute = (currentBlock, currentRound, bufferBlocks) => 
 
 const viableRoundExecute = (currentBlock, currentRound, previousRound, bufferBlocks) => {
   const currentLockBlock = currentRound[2];
-  const currentEndBlock = previousRound[3];
-  console.log("CURRENT LOCK BLOCK:", currentLockBlock);
-  console.log("CURRENT END BLOCK:", currentEndBlock);
+  const previousEndBlock = previousRound[3];
+  console.log("---execute new round --- CURRENT LOCK BLOCK:", currentLockBlock);
+  console.log("---execute new round --- PREVIOUS END BLOCK:", previousEndBlock);
   const currentBlockBN = ethers.BigNumber.from(currentBlock.toString());
-  return currentBlockBN.gte(currentLockBlock) && currentBlockBN.lte(currentLockBlock.add(bufferBlocks)) && currentBlockBN.gte(currentEndBlock) && currentBlockBN.lte(currentEndBlock.add(bufferBlocks));
+  return currentBlockBN.gte(currentLockBlock) && currentBlockBN.lte(currentLockBlock.add(bufferBlocks)) && currentBlockBN.gte(previousEndBlock) && currentBlockBN.lte(previousEndBlock.add(bufferBlocks));
 }
 
 const missedLockBlocks = (currentBlock, currentRound, bufferBlocks) => {
